@@ -5,13 +5,14 @@ import imageio
 import numpy as np
 import cv2
 
+# data
 from torch.utils.data import DataLoader
 from datasets import dataset_dict
 
 # models
 from kornia.utils.grid import create_meshgrid3d
 from models.networks import NGP
-from models.rendering import render
+from models.rendering import render, MAX_SAMPLES
 
 # optimizer, losses
 from apex.optimizers import FusedAdam
@@ -23,9 +24,10 @@ from metrics import psnr
 
 # pytorch-lightning
 from pytorch_lightning import LightningModule, Trainer
-from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.callbacks import TQDMProgressBar, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+
+from utils import slim_ckpt
 
 import warnings; warnings.filterwarnings("ignore")
 
@@ -53,8 +55,6 @@ class NeRFSystem(LightningModule):
 
         self.S = 16 # the interval to update density grid
 
-        self.optim = FusedAdam
-
     def forward(self, rays, split):
         kwargs = {'test_time': split!='train'}
 
@@ -68,7 +68,7 @@ class NeRFSystem(LightningModule):
         self.test_dataset = dataset(split='test', **kwargs)
 
     def configure_optimizers(self):
-        self.opt = self.optim(self.model.parameters(), hparams.lr)
+        self.opt = FusedAdam(self.model.parameters(), hparams.lr)
         self.sch = CosineAnnealingLR(self.opt,
                                      hparams.num_epochs,
                                      hparams.lr/30)
@@ -77,14 +77,15 @@ class NeRFSystem(LightningModule):
 
     def train_dataloader(self):
         # hard sampling (remove converged rays in training)
-        if self.current_epoch == 0:
-            self.weights = torch.ones(len(self.train_dataset.rays), device=self.device)
-        else:
-            non_converged_mask = self.weights>1e-5
-            self.train_dataset.rays = self.train_dataset.rays[non_converged_mask]
-            self.weights = self.weights[non_converged_mask]
+        if hparams.hard_sampling:
+            if self.current_epoch == 0:
+                self.register_buffer('weights',
+                        torch.ones(len(self.train_dataset.rays), device=self.device))
+            else:
+                non_converged_mask = self.weights>1e-5
+                self.train_dataset.rays = self.train_dataset.rays[non_converged_mask]
+                self.weights = self.weights[non_converged_mask]
 
-        # TODO: load the data more efficiently...
         self.train_dataset.batch_size = hparams.batch_size
         return DataLoader(self.train_dataset,
                           shuffle=True,
@@ -102,12 +103,16 @@ class NeRFSystem(LightningModule):
 
     def training_step(self, batch, batch_nb):
         if self.global_step%self.S == 0:
-            self.model.update_density_grid(warmup=self.global_step<256)
+            # gradually increase the threshold to remove floater
+            a_thr = min(self.current_epoch+1, 25)/50 # alpha threshold, at most 0.5
+            self.model.update_density_grid(a_thr*MAX_SAMPLES/(2*3**0.5),
+                                           warmup=self.global_step<256)
 
         rays, rgb = batch['rays'], batch['rgb']
         results = self(rays, split='train')
-        loss_d = self.loss(results, rgb, **{'epoch': self.current_epoch})
-        self.weights[batch['idx']] = loss_d['rgb'].detach()
+        loss_d = self.loss(results, rgb)
+        if hparams.hard_sampling:
+            self.weights[batch['idx']] = loss_d['rgb'].detach()
         loss = sum(lo.mean() for lo in loss_d.values())
 
         self.log('lr', self.opt.param_groups[0]['lr'])
@@ -172,10 +177,12 @@ if __name__ == '__main__':
                       logger=logger,
                       enable_model_summary=False,
                       accelerator='auto',
-                      devices=hparams.num_gpus,
+                      devices=1, # tinycudann doesn't support multigpu...
                       num_sanity_val_steps=0,
-                      precision=16,
-                      strategy=DDPStrategy(find_unused_parameters=False)
-                               if hparams.num_gpus>1 else None)
+                      precision=16)
 
-    trainer.fit(system)
+    trainer.fit(system, ckpt_path=hparams.ckpt_path)
+
+    # save slimmed ckpt for the last epoch
+    ckpt_ = slim_ckpt(f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}.ckpt')
+    torch.save(ckpt_, f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}_slim.ckpt')

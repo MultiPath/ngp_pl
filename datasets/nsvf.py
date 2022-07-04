@@ -4,6 +4,7 @@ import numpy as np
 import os
 from PIL import Image
 from einops import rearrange
+from tqdm import tqdm
 
 from .ray_utils import *
 
@@ -23,15 +24,18 @@ class NSVFDataset(BaseDataset):
         self.shift = (xyz_max+xyz_min)/2
         self.scale = (xyz_max-xyz_min).max()/2 * 1.05 # enlarge a little
 
-        if 'Synthetic' in root_dir: # Synthetic-NeRF or NSVF
+        if 'Synthetic' in root_dir or 'Ignatius' in root_dir:
             # hard-code fix the bound error for some scenes...
             if 'Mic' in root_dir: self.scale *= 1.2
             elif 'Lego' in root_dir: self.scale *= 1.1
             ###################################################
             with open(os.path.join(root_dir, 'intrinsics.txt')) as f:
                 fx = fy = float(f.readline().split()[0])
-            w = h = int(800*downsample)
-            fx *= w/800; fy *= h/800
+            if 'Synthetic' in root_dir:
+                w = h = int(800*downsample)
+            else:
+                w, h = int(1920*downsample), int(1080*downsample)
+            fx *= downsample; fy *= downsample
 
             K = np.float32([[fx, 0, w/2],
                             [0, fy, h/2],
@@ -63,8 +67,13 @@ class NSVFDataset(BaseDataset):
         rays = {} # {frame_idx: ray tensor}
 
         if split == 'test_traj': # BlendedMVS and TanksAndTemple
-            poses = np.loadtxt(os.path.join(self.root_dir, 'test_traj.txt'))
-            poses = poses.reshape(-1, 4, 4)
+            if 'Ignatius' in self.root_dir:
+                poses_path = \
+                    sorted(glob.glob(os.path.join(self.root_dir, 'test_pose/*.txt')))
+                poses = [np.loadtxt(p) for p in poses_path]
+            else:
+                poses = np.loadtxt(os.path.join(self.root_dir, 'test_traj.txt'))
+                poses = poses.reshape(-1, 4, 4)
             for idx, pose in enumerate(poses):
                 c2w = pose[:3]
                 c2w[:, :3] *= -1 # [left down front] to [right up back]
@@ -81,21 +90,26 @@ class NSVFDataset(BaseDataset):
             imgs = sorted(glob.glob(os.path.join(self.root_dir, 'rgb', prefix+'*.png')))
             poses = sorted(glob.glob(os.path.join(self.root_dir, 'pose', prefix+'*.txt')))
 
-            for idx, (img, pose) in enumerate(zip(imgs, poses)):
+            print(f'Loading {len(imgs)} {split} images ...')
+            for idx, (img, pose) in enumerate(tqdm(zip(imgs, poses))):
                 c2w = np.loadtxt(pose)[:3]
                 c2w[:, 1:3] *= -1 # [right down front] to [right up back]
                 c2w[:, 3] -= self.shift
                 c2w[:, 3] /= self.scale # to bound the scene inside [-1, 1]
-                rays_o, rays_d = get_rays(self.directions, torch.FloatTensor(c2w))
+
+                rays_o, rays_d = \
+                    get_rays(self.directions, torch.cuda.FloatTensor(c2w))
 
                 img = Image.open(img)
                 img = img.resize(self.img_wh, Image.LANCZOS)
-                img = self.transform(img) # (c, h, w)
+                img = self.transform(img).cuda() # (c, h, w)
                 img = rearrange(img, 'c h w -> (h w) c')
-                # TODO: some blendedmvs scenes have black bg...
+                if 'Jade' in self.root_dir or 'Fountain' in self.root_dir:
+                    # these scenes have black background, changing to white
+                    img[torch.all(img<=0.1, dim=-1)] = 1.0
                 if img.shape[-1] == 4:
                     img = img[:, :3]*img[:, -1:] + (1-img[:, -1:]) # blend A to RGB
 
-                rays[idx] = torch.cat([rays_o, rays_d, img], 1) # (h*w, 9)
+                rays[idx] = torch.cat([rays_o, rays_d, img], 1).cpu() # (h*w, 9)
 
         return rays

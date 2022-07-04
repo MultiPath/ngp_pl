@@ -18,12 +18,12 @@ bash bolt_setup.sh
 Or you can check the following steps:
 * Python>=3.8 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n ngp_pl python=3.8` to create a conda environment and activate it by `conda activate ngp_pl`)
 * Python libraries
-    * Install pytorch (1.11.0) by `pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113`
+    * Install pytorch by `pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113`
     * Install `tinycudann` following their [instruction](https://github.com/NVlabs/tiny-cuda-nn#requirements) (compilation and pytorch extension)
     * Install `apex` following their [instruction](https://github.com/NVIDIA/apex#linux)
     * Install core requirements by `pip install -r requirements.txt`
 
-* Cuda extension: Run `pip install models/csrc/ --use-feature=in-tree-build`
+* Cuda extension: Upgrade `pip` to >= 22.1 and run `pip install models/csrc/`
 
 # :books: Data preparation
 
@@ -37,14 +37,18 @@ It will train the lego scene for 20k steps (each step with 8192 rays), and perfo
 
 More options can be found in [opt.py](opt.py).
 
-# :key: Comparison with torch-ngp and the paper
+# :mag_right: Testing
+
+Use `test.ipynb` to generate images. Lego pretrained model is available [here](https://github.com/kwea123/ngp_pl/releases/tag/v1.0)
+
+# Comparison with torch-ngp and the paper
 
 I compared the quality (average testing PSNR on `Synthetic-NeRF`) and the inference speed (on `Lego` scene) v.s. the concurrent work torch-ngp (default settings) and the paper, all trained for about 5 minutes:
 
 | Method    | avg PSNR | FPS   | 
 | :---:     | :---:    | :---: |
-| torch-ngp | 31.46    | 7.8   |
-| mine      | 32.38    | 36.2 |
+| torch-ngp | 31.46    | 18.2  |
+| mine      | 32.38    | 36.2  |
 | instant-ngp paper | **33.18** | **60** |
 
 As for quality, mine is slightly better than torch-ngp, but the result might fluctuate across different runs.
@@ -64,7 +68,7 @@ More details are in the following section.
 
 To run benchmarks, use the scripts under `benchmarking`.
 
-Followings are my results:
+Followings are my results (qualitative results [here](https://github.com/kwea123/ngp_pl/issues/7)):
 
 <details>
   <summary>Synthetic-NeRF</summary>
@@ -89,28 +93,30 @@ Followings are my results:
 <details>
   <summary>Tanks and Temples</summary>
 
-|      | Ignatius | Truck | Barn | Caterpillar | Family | AVG   | 
-|:---: | :---:    | :---: | :---: | :---:      | :---:  | :---: |
-| PSNR |          |       |       |            | 33.77  |       |
-| FPS  |          |       |       |            | 6.16   |       |
+|      | Ignatius | Truck | Barn  | Caterpillar | Family | AVG   | 
+|:---: | :---:    | :---: | :---: | :---:       | :---:  | :---: |
+| PSNR | 28.90    | 28.21 | 28.92 | 26.30       | 33.77  | 29.22 |
+| *FPS | 10.04    |  7.99 | 16.14 | 10.91       | 6.16   | 10.25 |
+
+*Evaluated on `test-traj`
 
 </details>
 
 <details>
   <summary>BlendedMVS</summary>
 
-|      | Jade  | Fountain | Character | Statues | AVG   | 
-|:---: | :---: | :---:    | :---:     | :---:   | :---: |
-| PSNR |       |          | 30.16     | 26.93 |       |
-| FPS  |       |          | 35.99     | 19.22 |       |
+|       | *Jade  | *Fountain | Character | Statues | AVG   | 
+|:---:  | :---:  | :---:     | :---:     | :---:   | :---: |
+| PSNR  | 25.69  | 26.91     | 30.16     | 26.93   | 27.42 |
+| **FPS | 26.02  | 21.24     | 35.99     | 19.22   | 25.61 |
+
+*I manually switch the background from black to white, so the number isn't directly comparable to that in the papers.
+
+**Evaluated on `test-traj`
 
 </details>
 
 
 # TODO
 
-- [ ] test multi-gpu training
-
 - [ ] support custom dataset
-
-- [ ] benchmark on public datasets
