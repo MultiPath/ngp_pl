@@ -41,30 +41,7 @@ More options can be found in [opt.py](opt.py).
 
 Use `test.ipynb` to generate images. Lego pretrained model is available [here](https://github.com/kwea123/ngp_pl/releases/tag/v1.0)
 
-# Comparison with torch-ngp and the paper
-
-I compared the quality (average testing PSNR on `Synthetic-NeRF`) and the inference speed (on `Lego` scene) v.s. the concurrent work torch-ngp (default settings) and the paper, all trained for about 5 minutes:
-
-| Method    | avg PSNR | FPS   | 
-| :---:     | :---:    | :---: |
-| torch-ngp | 31.46    | 18.2  |
-| mine      | 32.38    | 36.2  |
-| instant-ngp paper | **33.18** | **60** |
-
-As for quality, mine is slightly better than torch-ngp, but the result might fluctuate across different runs.
-
-As for speed, mine is faster than torch-ngp, but is still only half fast as instant-ngp. Speed is dependent on the scene (if most of the scene is empty, speed will be faster).
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/11364490/176800109-38eb35f3-e145-4a09-8304-1795e3a4e8cd.png", width="45%">
-  <img src="https://user-images.githubusercontent.com/11364490/176800106-fead794f-7e70-4459-b99e-82725fe6777e.png", width="45%">
-  <br>
-  <sup>Left: torch-ngp. Right: mine.</sup>
-</p>
-
-More details are in the following section.
-
-# Benchmarks
+# :books: Benchmarks
 
 To run benchmarks, use the scripts under `benchmarking`.
 
