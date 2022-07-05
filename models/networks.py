@@ -28,12 +28,19 @@ class NGP(nn.Module):
     
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16; COMBO = False
+        # encoding_config={
+        #             "otype": "HashGrid",
+        #             "n_levels": L,
+        #             "n_features_per_level": F,
+        #             "log2_hashmap_size": log2_T,
+        #             "base_resolution": N_min,
+        #             "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
         encoding_config={
-                    "otype": "HashGrid",
+                    "otype": "TiledGrid",
                     "n_levels": L,
                     "n_features_per_level": F,
                     "log2_hashmap_size": log2_T,
-                    "base_resolution": N_min,
+                    "base_resolution": 80,
                     "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
         network_config={
                     "otype": "FullyFusedMLP",
@@ -47,7 +54,8 @@ class NGP(nn.Module):
             encoding = tcnn.Encoding(3, encoding_config)
             network  = tcnn.Network(encoding.n_output_dims, 16, network_config)
             self.xyz_encoder = nn.Sequential(encoding, network)
-
+        # print(sum([p.numel() for p in self.xyz_encoder.parameters()]))
+        # import pdb;pdb.set_trace()
         self.dir_encoder = \
             tcnn.Encoding(
                 n_input_dims=3,
