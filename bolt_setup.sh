@@ -8,7 +8,7 @@ source ~/.bashrc
 
 python -m pip install --upgrade pip
 pip install gpustat torchinfo
-pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+# pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git
 pip install -r requirements.txt
 

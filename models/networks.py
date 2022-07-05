@@ -1,3 +1,4 @@
+from cmath import e
 import torch
 from torch import nn
 import tinycudann as tcnn
@@ -26,28 +27,26 @@ class NGP(nn.Module):
             torch.zeros(self.cascades*self.grid_size**3//8, dtype=torch.uint8))
     
         # constants
-        L = 16; F = 2; log2_T = 19; N_min = 16
-
-        self.xyz_encoder = \
-            tcnn.NetworkWithInputEncoding(
-                n_input_dims=3,
-                n_output_dims=16,
-                encoding_config={
+        L = 16; F = 2; log2_T = 19; N_min = 16; COMBO = False
+        encoding_config={
                     "otype": "HashGrid",
                     "n_levels": L,
                     "n_features_per_level": F,
                     "log2_hashmap_size": log2_T,
                     "base_resolution": N_min,
-                    "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1)),
-                },
-                network_config={
+                    "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
+        network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
                     "output_activation": "None",
                     "n_neurons": 64,
-                    "n_hidden_layers": 1,
-                }
-            )
+                    "n_hidden_layers": 1}
+        if COMBO:
+            self.xyz_encoder = tcnn.NetworkWithInputEncoding(3, 16, encoding_config, network_config)
+        else:
+            encoding = tcnn.Encoding(3, encoding_config)
+            network  = tcnn.Network(encoding.n_output_dims, 16, network_config)
+            self.xyz_encoder = nn.Sequential(encoding, network)
 
         self.dir_encoder = \
             tcnn.Encoding(
