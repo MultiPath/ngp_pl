@@ -1,0 +1,3 @@
+[submodule "tinycudann"]
+	path = tinycudann
+	url = git@github.pie.apple.com:jiatao-gu/tiny-cuda-nn.git
