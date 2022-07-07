@@ -1,29 +1,21 @@
-# ngp_pl
+# Instant-NGP PyTorch
 
-### Advertisement: stay tuned with [my channel](https://www.youtube.com/channel/UC7UlsMUu_gIgpqNGB4SqSwQ), I will upload cuda tutorials recently, and do a stream about this implementation!
+This repo is adapted from https://github.com/kwea123/ngp_pl
+
 
 Instant-ngp (only NeRF) in pytorch+cuda trained with pytorch-lightning (**high quality with high speed**). This repo aims at providing a concise pytorch interface to facilitate future research, and am grateful if you can share it (and a citation is highly appreciated)!
 
-https://user-images.githubusercontent.com/11364490/177025079-cb92a399-2600-4e10-94e0-7cbe09f32a6f.mp4
-
-https://user-images.githubusercontent.com/11364490/176821462-83078563-28e1-4563-8e7a-5613b505e54a.mp4
+* [Example Video1](https://user-images.githubusercontent.com/11364490/177025079-cb92a399-2600-4e10-94e0-7cbe09f32a6f.mp4), [Example Video2](https://user-images.githubusercontent.com/11364490/176821462-83078563-28e1-4563-8e7a-5613b505e54a.mp4)
 
 *  [Official CUDA implementation](https://github.com/NVlabs/instant-ngp/tree/master)
-*  [torch-ngp](https://github.com/ashawkey/torch-ngp) another pytorch implementation that I highly referenced.
+*  [torch-ngp](https://github.com/ashawkey/torch-ngp) another pytorch implementation.
 
 # :computer: Installation
-
-This implementation has **strict** requirements due to dependencies on other libraries, if you encounter installation problem due to hardware/software mismatch, I'm afraid there is **no intention** to support different platforms (you are welcomed to contribute).
-
-## Hardware
-
-* OS: Ubuntu 20.04
-* NVIDIA GPU with Compute Compatibility >= 75 and memory > 6GB (Tested with RTX 2080 Ti), CUDA 11.3 (might work with older version)
-* 32GB RAM (in order to load full size images)
-
-## Software
-
-* Clone this repo by `git clone https://github.com/kwea123/ngp_pl`
+Run 
+```bash
+bash bolt_setup.sh
+```
+Or you can check the following steps:
 * Python>=3.8 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n ngp_pl python=3.8` to create a conda environment and activate it by `conda activate ngp_pl`)
 * Python libraries
     * Install pytorch by `pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113`
@@ -51,30 +43,7 @@ More options can be found in [opt.py](opt.py).
 
 Use `test.ipynb` to generate images. Lego pretrained model is available [here](https://github.com/kwea123/ngp_pl/releases/tag/v1.0)
 
-# Comparison with torch-ngp and the paper
-
-I compared the quality (average testing PSNR on `Synthetic-NeRF`) and the inference speed (on `Lego` scene) v.s. the concurrent work torch-ngp (default settings) and the paper, all trained for about 5 minutes:
-
-| Method    | avg PSNR | FPS   | 
-| :---:     | :---:    | :---: |
-| torch-ngp | 31.46    | 18.2  |
-| mine      | 32.76    | 36.2  |
-| instant-ngp paper | **33.18** | **60** |
-
-As for quality, mine is slightly better than torch-ngp, but the result might fluctuate across different runs.
-
-As for speed, mine is faster than torch-ngp, but is still only half fast as instant-ngp. Speed is dependent on the scene (if most of the scene is empty, speed will be faster).
-
-<p align="center">
-  <img src="https://user-images.githubusercontent.com/11364490/176800109-38eb35f3-e145-4a09-8304-1795e3a4e8cd.png", width="45%">
-  <img src="https://user-images.githubusercontent.com/11364490/176800106-fead794f-7e70-4459-b99e-82725fe6777e.png", width="45%">
-  <br>
-  <sup>Left: torch-ngp. Right: mine.</sup>
-</p>
-
-More details are in the following section.
-
-# Benchmarks
+# :books: Benchmarks
 
 To run benchmarks, use the scripts under `benchmarking`.
 

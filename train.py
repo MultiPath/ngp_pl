@@ -88,8 +88,8 @@ class NeRFSystem(LightningModule):
 
         self.train_dataset.batch_size = hparams.batch_size
         return DataLoader(self.train_dataset,
-                          shuffle=False, # shuffle is done in datasets/base.py
-                          num_workers=16,
+                          shuffle=False,  # shuffle is done in dataset/base.py
+                          num_workers=8,
                           persistent_workers=True,
                           batch_size=None,
                           pin_memory=True)
