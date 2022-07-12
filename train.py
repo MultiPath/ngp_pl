@@ -178,7 +178,7 @@ if __name__ == '__main__':
                       logger=logger,
                       enable_model_summary=False,
                       accelerator='gpu',
-                      devices=1, # tinycudann doesn't support multigpu...
+                      devices=2, # tinycudann doesn't support multigpu...
                       num_sanity_val_steps=0,
                       precision=16)
 

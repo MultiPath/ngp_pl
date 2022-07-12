@@ -9,12 +9,15 @@ source ~/.bashrc
 python -m pip install --upgrade pip
 pip install gpustat torchinfo
 # pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git
+# pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git
 pip install -r requirements.txt
 
 pushd tinycudann/bindings/torch
 python setup.py install
 popd
+
+# install cuda 
+pip install models/csrc
 
 # just for committing code
 git config --global user.email "jiatao@apple.com"
