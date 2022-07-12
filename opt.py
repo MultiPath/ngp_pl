@@ -26,7 +26,8 @@ def get_opts():
                         help='whether to hard sample rays with high loss')
     parser.add_argument('--no_save_test', action='store_true', default=False,
                         help='whether to save test image and video')
-
+    parser.add_argument('--no_save_images', action='store_true', default=False,
+                        help='whether to save test image and video')
     parser.add_argument('--lr', type=float, default=3e-3,
                         help='learning rate')
 

@@ -137,8 +137,9 @@ class NeRFSystem(LightningModule):
             log['rgb'] = rgb_pred = (rgb_pred*255).astype(np.uint8)
             log['depth'] = depth = \
                 depth2img(results['depth'].reshape(h, w).cpu().numpy())
-            imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}.png'), rgb_pred)
-            imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}_d.png'), depth)
+            if not hparams.no_save_images:
+                imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}.png'), rgb_pred)
+                imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}_d.png'), depth)
 
         return log
 

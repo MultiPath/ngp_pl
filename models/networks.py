@@ -28,20 +28,20 @@ class NGP(nn.Module):
     
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16; COMBO = False
-        # encoding_config={
-        #             "otype": "HashGrid",
-        #             "n_levels": L,
-        #             "n_features_per_level": F,
-        #             "log2_hashmap_size": log2_T,
-        #             "base_resolution": N_min,
-        #             "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
         encoding_config={
-                    "otype": "TiledGrid",
+                    "otype": "HashGrid",
                     "n_levels": L,
                     "n_features_per_level": F,
                     "log2_hashmap_size": log2_T,
-                    "base_resolution": 80,
+                    "base_resolution": N_min,
                     "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
+        # encoding_config={
+        #             "otype": "TiledGrid",
+        #             "n_levels": L,
+        #             "n_features_per_level": F,
+        #             "log2_hashmap_size": log2_T,
+        #             "base_resolution": 80,
+        #             "per_level_scale": np.exp(np.log(2048*scale/N_min)/(L-1))}
         network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
@@ -54,8 +54,7 @@ class NGP(nn.Module):
             encoding = tcnn.Encoding(3, encoding_config)
             network  = tcnn.Network(encoding.n_output_dims, 16, network_config)
             self.xyz_encoder = nn.Sequential(encoding, network)
-        # print(sum([p.numel() for p in self.xyz_encoder.parameters()]))
-        # import pdb;pdb.set_trace()
+
         self.dir_encoder = \
             tcnn.Encoding(
                 n_input_dims=3,
@@ -164,7 +163,7 @@ class NGP(nn.Module):
         for c in range(self.cascades):
             indices, coords = cells[c]
             xyzs = coords.float()/(self.grid_size-1)*2-1 # in [-1, 1]
-            s = min(2**c, self.scale)
+            s = min(2**(c-1), self.scale)
             half_grid_size = s/self.grid_size
             # scale to current cascade's resolution
             xyzs_c = xyzs * (s-half_grid_size)
