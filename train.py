@@ -26,7 +26,7 @@ from metrics import psnr
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import TQDMProgressBar, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-
+from pytorch_lightning.utilities.distributed import all_gather_ddp_if_available
 from utils import slim_ckpt
 
 import warnings; warnings.filterwarnings("ignore")
@@ -44,28 +44,30 @@ class NeRFSystem(LightningModule):
     def __init__(self, hparams):
         super().__init__()
         self.save_hyperparameters(hparams)
-
-        self.loss = NeRFLoss()
-
-        self.model = NGP(scale=hparams.scale)
-        # save grid coordinates for training
-        G = self.model.grid_size
-        self.model.register_buffer('grid_coords',
-            create_meshgrid3d(G, G, G, False, dtype=torch.int32).reshape(-1, 3))
-
         self.S = 16 # the interval to update density grid
 
     def forward(self, rays, split):
         kwargs = {'test_time': split!='train'}
-
         return render(self.model, rays, **kwargs)
 
     def setup(self, stage):
+        hparams = self.hparams
         dataset = dataset_dict[hparams.dataset_name]
         kwargs = {'root_dir': hparams.root_dir,
                   'downsample': hparams.downsample}
+        
+        # setup dataset
         self.train_dataset = dataset(split=hparams.split, **kwargs)
         self.test_dataset = dataset(split='test', **kwargs)
+
+        # build model
+        self.loss = NeRFLoss()
+        self.model = NGP(scale=hparams.scale)
+        
+        # save grid coordinates for training
+        G = self.model.grid_size
+        self.model.register_buffer('grid_coords',
+            create_meshgrid3d(G, G, G, False, dtype=torch.int32).reshape(-1, 3))
 
     def configure_optimizers(self):
         self.opt = FusedAdam(self.model.parameters(), hparams.lr, eps=1e-15)
@@ -129,30 +131,40 @@ class NeRFSystem(LightningModule):
     def validation_step(self, batch, batch_nb):
         rays, rgb_gt = batch['rays'], batch['rgb']
         results = self(rays, split='test')
-        log = {'psnr': psnr(results['rgb'], rgb_gt)}
-
-        if not hparams.no_save_test: # save test image to disk
+        rgb_pred, depth_pred = results['rgb'], results['depth']
+        log = {'psnr': psnr(rgb_pred, rgb_gt)}
+        
+        rgb_pred    = all_gather_ddp_if_available(rgb_pred)
+        depth_pred  = all_gather_ddp_if_available(rgb_pred)
+        world_size  = rgb_pred.size(0)
+        log['psnr'] = all_gather_ddp_if_available(log['psnr']).mean()
+        
+        if not hparams.no_save_test:  # save test image to disk
             w, h = self.train_dataset.img_wh
-            rgb_pred = results['rgb'].reshape(h, w, 3).cpu().numpy()
-            log['rgb'] = rgb_pred = (rgb_pred*255).astype(np.uint8)
-            log['depth'] = depth = \
-                depth2img(results['depth'].reshape(h, w).cpu().numpy())
+            rgb_pred   = rgb_pred.reshape(-1, h, w, 3).cpu().numpy()
+            depth_pred = depth_pred.reshape(-1, h, w).cpu().numpy()
+
+            log['rgb'] = rgb_pred = [(r*255).astype(np.uint8) for r in rgb_pred]
+            log['depth'] = depth = [depth2img(d) for d in depth_pred]
+
             if not hparams.no_save_images:
-                imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}.png'), rgb_pred)
-                imageio.imsave(os.path.join(self.val_dir, f'{batch_nb:03d}_d.png'), depth)
+                batch_idx = batch_nb * world_size + self.global_rank
+                imageio.imsave(os.path.join(self.val_dir, f'{batch_idx:03d}.png'), rgb_pred)
+                imageio.imsave(os.path.join(self.val_dir, f'{batch_idx:03d}_d.png'), depth)
 
         return log
 
     def validation_epoch_end(self, outputs):
         mean_psnr = torch.stack([x['psnr'] for x in outputs]).mean()
         self.log('test/psnr', mean_psnr, prog_bar=True)
-
-        if not hparams.no_save_test: # save video
+       
+        if (not hparams.no_save_test) and (self.global_rank == 0): # save video
+            print(len([a for x in outputs for a in x['rgb']]))
             imageio.mimsave(os.path.join(self.val_dir, 'rgb.mp4'),
-                            [x['rgb'] for x in outputs],
+                            [a for x in outputs for a in x['rgb']],
                             fps=30, macro_block_size=1)
             imageio.mimsave(os.path.join(self.val_dir, 'depth.mp4'),
-                            [x['depth'] for x in outputs],
+                            [d for x in outputs for d in x['depth']],
                             fps=30, macro_block_size=1)
 
 
@@ -177,8 +189,9 @@ if __name__ == '__main__':
                       callbacks=callbacks,
                       logger=logger,
                       enable_model_summary=False,
+                      strategy='ddp',
                       accelerator='gpu',
-                      devices=2, # tinycudann doesn't support multigpu...
+                      #devices=2, # tinycudann doesn't support multigpu...
                       num_sanity_val_steps=0,
                       precision=16)
 
