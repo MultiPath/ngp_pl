@@ -160,7 +160,7 @@ class NGP(nn.Module):
             img_wh: image width and height
             chunk: the chunk size to split the cells (to avoid OOM)
         """
-        w2c_R = poses[:, :3, :3].mT # (N, 3, 3)
+        w2c_R = poses[:, :3, :3].transpose(-2, -1) # (N, 3, 3)  # equvilent to .mT ??
         w2c_T = -w2c_R@poses[:, :3, 3:] # (N, 3, 1)
         cells = self.get_all_cells()
         for c in range(self.cascades):
