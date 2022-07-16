@@ -8,7 +8,7 @@ import numpy as np
 
 
 class NGP(nn.Module):
-    def __init__(self, scale):
+    def __init__(self, scale=0.5):
         super().__init__()
 
         # scene bounding box
@@ -21,11 +21,9 @@ class NGP(nn.Module):
         # each density grid covers [-2^(k-1), 2^(k-1)]^3 for k in [0, C-1]
         self.cascades = max(1+int(np.ceil(np.log2(2*scale))), 1)
         self.grid_size = 128
-        self.register_buffer('density_grid',
-            torch.zeros(self.cascades, self.grid_size**3))
         self.register_buffer('density_bitfield',
             torch.zeros(self.cascades*self.grid_size**3//8, dtype=torch.uint8))
-    
+
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16; COMBO = False
         encoding_config={
@@ -98,13 +96,14 @@ class NGP(nn.Module):
         """
         Inputs:
             x: (N, 3) xyz in [-scale, scale]
-            d: (N, 3) normalized direction in [-1, 1]
+            d: (N, 3) directions
 
         Outputs:
             sigmas: (N)
             rgbs: (N, 3)
         """
         sigmas, h = self.density(x, return_feat=True)
+        d /= torch.norm(d, dim=-1, keepdim=True)
         d = self.dir_encoder((d+1)/2)
         rgbs = self.rgb_net(torch.cat([d, h], 1))
 
@@ -151,6 +150,36 @@ class NGP(nn.Module):
         return cells
 
     @torch.no_grad()
+    def mark_invisible_cells(self, K, poses, img_wh, chunk=64**3):
+        """
+        mark the cells that aren't covered by the cameras with density -1
+
+        Inputs:
+            K: (3, 3) camera intrinsics
+            poses: (N, 3, 4) camera to world poses
+            img_wh: image width and height
+            chunk: the chunk size to split the cells (to avoid OOM)
+        """
+        w2c_R = poses[:, :3, :3].mT # (N, 3, 3)
+        w2c_T = -w2c_R@poses[:, :3, 3:] # (N, 3, 1)
+        cells = self.get_all_cells()
+        for c in range(self.cascades):
+            indices, coords = cells[c] # M=128^3 cells
+            for i in range(0, len(indices), chunk):
+                xyzs = coords[i:i+chunk]/(self.grid_size-1)*2-1 # in [-1, 1]
+                s = min(2**(c-1), self.scale)
+                half_grid_size = s/self.grid_size
+                xyzs_w = (xyzs*(s-half_grid_size)).T # (3, chunk)
+                xyzs_c = w2c_R @ xyzs_w + w2c_T # (N, 3, chunk)
+                uvd = K @ xyzs_c
+                uv = uvd[:, :2]/uvd[:, 2:] # (N, 2, chunk)
+                valid_mask = (uvd[:, 2]>0)& \
+                             (uv[:, 0]>=0)&(uv[:, 0]<img_wh[0])& \
+                             (uv[:, 1]>=0)&(uv[:, 1]<img_wh[1]) # (N, chunk)
+                self.density_grid[c, indices[i:i+chunk]] = \
+                    torch.where(valid_mask.any(0), 0., -1.)
+
+    @torch.no_grad()
     def update_density_grid(self, density_threshold, warmup=False, decay=0.95):
         # create temporary grid
         tmp_grid = -torch.ones_like(self.density_grid)
@@ -162,21 +191,22 @@ class NGP(nn.Module):
         # infer sigmas
         for c in range(self.cascades):
             indices, coords = cells[c]
-            xyzs = coords.float()/(self.grid_size-1)*2-1 # in [-1, 1]
+            xyzs = coords/(self.grid_size-1)*2-1 # in [-1, 1]
             s = min(2**(c-1), self.scale)
             half_grid_size = s/self.grid_size
-            # scale to current cascade's resolution
-            xyzs_c = xyzs * (s-half_grid_size)
-            # add noise in [-hgs, hgs]
-            xyzs_c += (torch.rand_like(xyzs_c)*2-1) * half_grid_size
-            tmp_grid[c, indices] = self.density(xyzs_c)
+            xyzs_w = xyzs*(s-half_grid_size)
+            # pick random position in the cell by adding noise in [-hgs, hgs]
+            xyzs_w += (torch.rand_like(xyzs_w)*2-1) * half_grid_size
+            tmp_grid[c, indices] = self.density(xyzs_w)
 
         # ema update
         valid_mask = (self.density_grid>=0) & (tmp_grid>=0)
         self.density_grid[valid_mask] = \
             torch.maximum(self.density_grid[valid_mask]*decay, tmp_grid[valid_mask])
-        self.mean_density = self.density_grid.clamp(min=0).mean().item()
+        mean_density = self.density_grid[self.density_grid>0].mean().item()
 
         # pack to bitfield
-        vren.packbits(self.density_grid, min(self.mean_density, density_threshold),
+        vren.packbits(self.density_grid, min(mean_density, density_threshold),
                       self.density_bitfield)
+
+        # TODO: max pooling? https://github.com/NVlabs/instant-ngp/blob/master/src/testbed_nerf.cu#L578
