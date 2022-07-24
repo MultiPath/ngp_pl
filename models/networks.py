@@ -161,7 +161,7 @@ class NGP(nn.Module):
         """
         N_cams = poses.shape[0]
         self.count_grid = torch.zeros_like(self.density_grid)
-        w2c_R = poses[:, :3, :3].mT # (N_cams, 3, 3) batch transpose
+        w2c_R = poses[:, :3, :3].transpose(-2, -1)  # (N_cams, 3, 3) batch transpose
         w2c_T = -w2c_R@poses[:, :3, 3:] # (N_cams, 3, 1)
         cells = self.get_all_cells()
         for c in range(self.cascades):
