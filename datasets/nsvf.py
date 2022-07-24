@@ -26,12 +26,11 @@ class NSVFDataset(BaseDataset):
             elif 'Lego' in root_dir: self.scale *= 1.1
             ###################################################
             with open(os.path.join(root_dir, 'intrinsics.txt')) as f:
-                fx = fy = float(f.readline().split()[0])
+                fx = fy = float(f.readline().split()[0]) * downsample
             if 'Synthetic' in root_dir:
                 w = h = int(800*downsample)
             else:
                 w, h = int(1920*downsample), int(1080*downsample)
-            fx *= downsample; fy *= downsample
 
             self.K = np.float32([[fx, 0, w/2],
                                  [0, fy, h/2],
@@ -61,6 +60,7 @@ class NSVFDataset(BaseDataset):
 
     def read_meta(self, split):
         rays = {} # {frame_idx: ray tensor}
+        self.poses = []
 
         if split == 'test_traj': # BlendedMVS and TanksAndTemple
             if 'Ignatius' in self.root_dir:
@@ -72,9 +72,10 @@ class NSVFDataset(BaseDataset):
                 poses = poses.reshape(-1, 4, 4)
             for idx, pose in enumerate(poses):
                 c2w = pose[:3]
-                c2w[:, 1] *= -1 # [left down front] to [right down front]
+                c2w[:, 0] *= -1 # [left down front] to [right down front]
                 c2w[:, 3] -= self.shift
                 c2w[:, 3] /= self.scale # to bound the scene inside [-1, 1]
+                self.poses += [c2w]
                 rays_o, rays_d = get_rays(self.directions, torch.cuda.FloatTensor(c2w))
 
                 rays[idx] = torch.cat([rays_o, rays_d], 1).cpu() # (h*w, 6)
@@ -86,7 +87,6 @@ class NSVFDataset(BaseDataset):
             imgs = sorted(glob.glob(os.path.join(self.root_dir, 'rgb', prefix+'*.png')))
             poses = sorted(glob.glob(os.path.join(self.root_dir, 'pose', prefix+'*.txt')))
 
-            self.poses = []
             print(f'Loading {len(imgs)} {split} images ...')
             for idx, (img, pose) in enumerate(tqdm(zip(imgs, poses))):
                 c2w = np.loadtxt(pose)[:3]

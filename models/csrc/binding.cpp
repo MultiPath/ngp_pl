@@ -62,6 +62,7 @@ std::vector<torch::Tensor> raymarching_train(
     const torch::Tensor rays_d,
     const torch::Tensor hits_t,
     const torch::Tensor density_bitfield,
+    const int cascades,
     const float scale,
     const float exp_step_factor,
     const torch::Tensor noise,
@@ -75,8 +76,8 @@ std::vector<torch::Tensor> raymarching_train(
     CHECK_INPUT(noise);
 
     return raymarching_train_cu(
-        rays_o, rays_d, hits_t, density_bitfield, scale, exp_step_factor,
-        noise, grid_size, max_samples);
+        rays_o, rays_d, hits_t, density_bitfield, cascades,
+        scale, exp_step_factor, noise, grid_size, max_samples);
 }
 
 
@@ -86,6 +87,7 @@ std::vector<torch::Tensor> raymarching_test(
     torch::Tensor hits_t,
     const torch::Tensor alive_indices,
     const torch::Tensor density_bitfield,
+    const int cascades,
     const float scale,
     const float exp_step_factor,
     const int grid_size,
@@ -99,8 +101,8 @@ std::vector<torch::Tensor> raymarching_test(
     CHECK_INPUT(density_bitfield);
 
     return raymarching_test_cu(
-        rays_o, rays_d, hits_t, alive_indices, density_bitfield, scale, exp_step_factor,
-        grid_size, max_samples, N_samples);
+        rays_o, rays_d, hits_t, alive_indices, density_bitfield, cascades,
+        scale, exp_step_factor, grid_size, max_samples, N_samples);
 }
 
 
@@ -127,6 +129,7 @@ std::vector<torch::Tensor> composite_train_fw(
 std::vector<torch::Tensor> composite_train_bw(
     const torch::Tensor dL_dopacity,
     const torch::Tensor dL_ddepth,
+    const torch::Tensor dL_ddepth_sq,
     const torch::Tensor dL_drgb,
     const torch::Tensor sigmas,
     const torch::Tensor rgbs,
@@ -135,11 +138,13 @@ std::vector<torch::Tensor> composite_train_bw(
     const torch::Tensor rays_a,
     const torch::Tensor opacity,
     const torch::Tensor depth,
+    const torch::Tensor depth_sq,
     const torch::Tensor rgb,
     const float opacity_threshold
 ){
     CHECK_INPUT(dL_dopacity);
     CHECK_INPUT(dL_ddepth);
+    CHECK_INPUT(dL_ddepth_sq);
     CHECK_INPUT(dL_drgb);
     CHECK_INPUT(sigmas);
     CHECK_INPUT(rgbs);
@@ -148,12 +153,13 @@ std::vector<torch::Tensor> composite_train_bw(
     CHECK_INPUT(rays_a);
     CHECK_INPUT(opacity);
     CHECK_INPUT(depth);
+    CHECK_INPUT(depth_sq);
     CHECK_INPUT(rgb);
 
     return composite_train_bw_cu(
-                dL_dopacity, dL_ddepth, dL_drgb,
+                dL_dopacity, dL_ddepth, dL_ddepth_sq, dL_drgb,
                 sigmas, rgbs, deltas, ts, rays_a,
-                opacity, depth, rgb, opacity_threshold);
+                opacity, depth, depth_sq, rgb, opacity_threshold);
 }
 
 

@@ -6,9 +6,6 @@
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
 
-#define INF 1000.0f
-
-
 std::vector<torch::Tensor> ray_aabb_intersect_cu(
     const torch::Tensor rays_o,
     const torch::Tensor rays_d,
@@ -43,6 +40,7 @@ std::vector<torch::Tensor> raymarching_train_cu(
     const torch::Tensor rays_d,
     const torch::Tensor hits_t,
     const torch::Tensor density_bitfield,
+    const int cascades,
     const float scale,
     const float exp_step_factor,
     const torch::Tensor noise,
@@ -57,6 +55,7 @@ std::vector<torch::Tensor> raymarching_test_cu(
     torch::Tensor hits_t,
     const torch::Tensor alive_indices,
     const torch::Tensor density_bitfield,
+    const int cascades,
     const float scale,
     const float exp_step_factor,
     const int grid_size,
@@ -78,6 +77,7 @@ std::vector<torch::Tensor> composite_train_fw_cu(
 std::vector<torch::Tensor> composite_train_bw_cu(
     const torch::Tensor dL_dopacity,
     const torch::Tensor dL_ddepth,
+    const torch::Tensor dL_ddepth_sq,
     const torch::Tensor dL_drgb,
     const torch::Tensor sigmas,
     const torch::Tensor rgbs,
@@ -86,6 +86,7 @@ std::vector<torch::Tensor> composite_train_bw_cu(
     const torch::Tensor rays_a,
     const torch::Tensor opacity,
     const torch::Tensor depth,
+    const torch::Tensor depth_sq,
     const torch::Tensor rgb,
     const float T_threshold
 );

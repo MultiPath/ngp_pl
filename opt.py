@@ -16,8 +16,6 @@ def get_opts():
 
     parser.add_argument('--scale', type=float, default=0.5,
                         help='scene scale (whole scene must lie in [-scale, scale]^3')
-    parser.add_argument('--density_threshold', type=float, default=10.0,
-                        help='density threshold below which a cell is considered empty')
 
     parser.add_argument('--batch_size', type=int, default=8192,
                         help='number of rays in a batch')
@@ -26,13 +24,15 @@ def get_opts():
     parser.add_argument('--num_gpus', type=int, default=1,
                         help='number of gpus')
 
+    parser.add_argument('--eval_lpips', action='store_true', default=False,
+                        help='evaluate lpips metric (consumes more VRAM)')
     parser.add_argument('--val_only', action='store_true', default=False,
                         help='run only validation (need to provide ckpt_path)')
     parser.add_argument('--no_save_test', action='store_true', default=False,
                         help='whether to save test image and video')
     parser.add_argument('--no_save_images', action='store_true', default=False,
                         help='whether to save test image and video')
-    parser.add_argument('--lr', type=float, default=3e-3,
+    parser.add_argument('--lr', type=float, default=1e-3,
                         help='learning rate')
 
     parser.add_argument('--exp_name', type=str, default='exp',

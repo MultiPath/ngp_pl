@@ -14,7 +14,7 @@ from datasets import dataset_dict
 # models
 from kornia.utils.grid import create_meshgrid3d
 from models.networks import NGP
-from models.rendering import render
+from models.rendering import render, MAX_SAMPLES
 
 # optimizer, losses
 from apex.optimizers import FusedAdam
@@ -56,7 +56,8 @@ class NeRFSystem(LightningModule):
     def forward(self, rays, split):
         kwargs = {'test_time': split!='train'}
         if self.hparams.dataset_name == 'colmap':
-            kwargs['exp_step_factor'] = 1/512
+            kwargs['exp_step_factor'] = 1/256
+
         return render(self.model, rays, **kwargs)
 
     def setup(self, stage):
@@ -113,22 +114,24 @@ class NeRFSystem(LightningModule):
     def on_train_start(self):
         K = torch.cuda.FloatTensor(self.train_dataset.K)
         poses = torch.cuda.FloatTensor(self.train_dataset.poses)
-        self.model.mark_untrained_cells(K, poses, self.train_dataset.img_wh)
+        self.model.mark_invisible_cells(K, poses, self.train_dataset.img_wh)
 
     def training_step(self, batch, batch_nb):
         if self.global_step%self.S == 0:
-            self.model.update_density_grid(self.hparams.density_threshold,
-                                           warmup=self.global_step<256)
+            self.model.update_density_grid(0.01*MAX_SAMPLES/3**0.5,
+                                           warmup=self.global_step<256,
+                                           erode=hparams.dataset_name!='nsvf')
 
-        rays, rgb = batch['rays'], batch['rgb']
-        results = self(rays, split='train')
-        loss_d = self.loss(results, rgb)
+        results = self(batch['rays'], split='train')
+        loss_d = self.loss(results, batch)
         loss = sum(lo.mean() for lo in loss_d.values())
 
         with torch.no_grad():
-            self.train_psnr(results['rgb'], rgb)
+            self.train_psnr(results['rgb'], batch['rgb'])
         self.log('lr', self.opt.param_groups[0]['lr'])
         self.log('train/loss', loss)
+        self.log('train/s_per_ray',
+                 results['total_samples']/len(batch['rays']), prog_bar=True)
         self.log('train/psnr', self.train_psnr, prog_bar=True)
 
         return loss
@@ -140,8 +143,8 @@ class NeRFSystem(LightningModule):
             os.makedirs(self.val_dir, exist_ok=True)
 
     def validation_step(self, batch, batch_nb):
-        rays, rgb_gt = batch['rays'], batch['rgb']
-        results = self(rays, split='test')
+        rgb_gt = batch['rgb']
+        results = self(batch['rays'], split='test')
 
         logs = {}
         # compute each metric per image
@@ -155,10 +158,11 @@ class NeRFSystem(LightningModule):
         self.val_ssim(rgb_pred, rgb_gt)
         logs['ssim'] = self.val_ssim.compute()
         self.val_ssim.reset()
-        self.val_lpips(torch.clip(rgb_pred*2-1, -1, 1),
-                       torch.clip(rgb_gt*2-1, -1, 1))
-        logs['lpips'] = self.val_lpips.compute()
-        self.val_lpips.reset()
+        if hparams.eval_lpips:
+            self.val_lpips(torch.clip(rgb_pred*2-1, -1, 1),
+                           torch.clip(rgb_gt*2-1, -1, 1))
+            logs['lpips'] = self.val_lpips.compute()
+            self.val_lpips.reset()
 
         if not hparams.no_save_test: # save test image to disk
             idx = batch['idx']
@@ -171,18 +175,24 @@ class NeRFSystem(LightningModule):
         return logs
 
     def validation_epoch_end(self, outputs):
-        psnrs  = torch.stack([x['psnr'] for x in outputs])
-        ssims  = torch.stack([x['ssim'] for x in outputs])
-        lpipss = torch.stack([x['lpips'] for x in outputs])
-
-        mean_psnr  = all_gather_ddp_if_available(psnrs).mean()
-        mean_ssim  = all_gather_ddp_if_available(ssims).mean()
-        mean_lpips = all_gather_ddp_if_available(lpipss).mean()
-
+        psnrs = torch.stack([x['psnr'] for x in outputs])
+        mean_psnr = all_gather_ddp_if_available(psnrs).mean()
         self.log('test/psnr', mean_psnr, prog_bar=True)
-        self.log('test/ssim', mean_ssim)
-        self.log('test/lpips_vgg', mean_lpips)
 
+        ssims = torch.stack([x['ssim'] for x in outputs])
+        mean_ssim = all_gather_ddp_if_available(ssims).mean()
+        self.log('test/ssim', mean_ssim)
+
+        if hparams.eval_lpips:
+            lpipss = torch.stack([x['lpips'] for x in outputs])
+            mean_lpips = all_gather_ddp_if_available(lpipss).mean()
+            self.log('test/lpips_vgg', mean_lpips)
+
+    def get_progress_bar_dict(self):
+        # don't show the version number
+        items = super().get_progress_bar_dict()
+        items.pop("v_num", None)
+        return items
 
 if __name__ == '__main__':
     hparams = get_opts()
@@ -215,7 +225,13 @@ if __name__ == '__main__':
 
     trainer.fit(system, ckpt_path=hparams.ckpt_path)
 
-    if (not hparams.no_save_test) and hparams.dataset_name=='nsvf': # save video
+    if not hparams.val_only: # save slimmed ckpt for the last epoch
+        ckpt_ = slim_ckpt(f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}.ckpt')
+        torch.save(ckpt_, f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}_slim.ckpt')
+
+    if (not hparams.no_save_test) and \
+       hparams.dataset_name=='nsvf' and \
+       'Synthetic' in hparams.root_dir: # save video
         imgs = sorted(glob.glob(os.path.join(system.val_dir, '*.png')))
         imageio.mimsave(os.path.join(system.val_dir, 'rgb.mp4'),
                         [imageio.imread(img) for img in imgs[::2]],
@@ -223,7 +239,3 @@ if __name__ == '__main__':
         imageio.mimsave(os.path.join(system.val_dir, 'depth.mp4'),
                         [imageio.imread(img) for img in imgs[1::2]],
                         fps=30, macro_block_size=1)
-
-    if not hparams.val_only: # save slimmed ckpt for the last epoch
-        ckpt_ = slim_ckpt(f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}.ckpt')
-        torch.save(ckpt_, f'ckpts/{hparams.exp_name}/epoch={hparams.num_epochs-1}_slim.ckpt')
