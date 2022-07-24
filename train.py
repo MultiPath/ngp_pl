@@ -6,6 +6,7 @@ import imageio
 import numpy as np
 import cv2
 from einops import rearrange
+from torchinfo import summary
 
 # data
 from torch.utils.data import DataLoader
@@ -81,8 +82,9 @@ class NeRFSystem(LightningModule):
             p.requires_grad = False
 
         # build model
-        self.model = NGP(scale=hparams.scale)
-        
+        self.model = NGP(scale=hparams.scale, encoder_arch=hparams.encoder_arch)
+        summary(self.model)
+
         # save grid coordinates for training
         G = self.model.grid_size
         self.model.register_buffer('grid_coords',
@@ -169,8 +171,9 @@ class NeRFSystem(LightningModule):
             rgb_pred = rearrange(results['rgb'].cpu().numpy(), '(h w) c -> h w c', h=h)
             rgb_pred = (rgb_pred*255).astype(np.uint8)
             depth = depth2img(rearrange(results['depth'].cpu().numpy(), '(h w) -> h w', h=h))
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
-            imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
+            if not hparams.no_save_images:
+                imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}.png'), rgb_pred)
+                imageio.imsave(os.path.join(self.val_dir, f'{idx:03d}_d.png'), depth)
 
         return logs
 

@@ -10,11 +10,12 @@ from .rendering import NEAR_DISTANCE
 
 
 class NGP(nn.Module):
-    def __init__(self, scale):
+    def __init__(self, scale, encoder_arch='standard'):
         super().__init__()
 
         # scene bounding box
         self.scale = scale
+        self.encoder_arch = encoder_arch
         self.register_buffer('center', torch.zeros(1, 3))
         self.register_buffer('xyz_min', -torch.ones(1, 3)*scale)
         self.register_buffer('xyz_max', torch.ones(1, 3)*scale)
@@ -26,31 +27,7 @@ class NGP(nn.Module):
         self.register_buffer('density_bitfield',
             torch.zeros(self.cascades*self.grid_size**3//8, dtype=torch.uint8))
 
-        # constants
-        L = 16; F = 2; log2_T = 19; N_min = 16
-        b = np.exp(np.log(2048*scale/N_min)/(L-1))
-        print(f'GridEncoding: Nmin={N_min} b={b:.5f} F={F} T=2^{log2_T} L={L}')
-
-        self.xyz_encoder = \
-            tcnn.NetworkWithInputEncoding(
-                n_input_dims=3,
-                n_output_dims=16,
-                encoding_config={
-                    "otype": "HashGrid",
-                    "n_levels": L,
-                    "n_features_per_level": F,
-                    "log2_hashmap_size": log2_T,
-                    "base_resolution": N_min,
-                    "per_level_scale": b,
-                },
-                network_config={
-                    "otype": "FullyFusedMLP",
-                    "activation": "ReLU",
-                    "output_activation": "None",
-                    "n_neurons": 64,
-                    "n_hidden_layers": 1}
-            )
-
+        self.xyz_encoder = self.setup_encoder(self.encoder_arch)
         self.dir_encoder = \
             tcnn.Encoding(
                 n_input_dims=3,
@@ -59,7 +36,6 @@ class NGP(nn.Module):
                     "degree": 4,
                 },
             )
-
         self.rgb_net = \
             tcnn.Network(
                 n_input_dims=32,
@@ -74,6 +50,53 @@ class NGP(nn.Module):
             )
 
         self.sigma_act = TruncExp.apply
+
+    def setup_encoder(self, arch):
+        # constants
+        L = 16; F = 2; log2_T = 19; N_min = 16; VRES = 80
+        b = np.exp(np.log(2048*self.scale/N_min)/(L-1))
+        
+        network_config = {
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "None",
+                "n_neurons": 64,
+                "n_hidden_layers": 1,}
+
+        if arch == 'standard' or arch == 'split':
+            print(f'GridEncoding: Nmin={N_min} b={b:.5f} F={F} T=2^{log2_T} L={L}')
+            encoding_config = {
+                "otype": "HashGrid",
+                "n_levels": L,
+                "n_features_per_level": F,
+                "log2_hashmap_size": log2_T,
+                "base_resolution": N_min,
+                "per_level_scale": b,}
+
+            if arch == 'standard':
+                return tcnn.NetworkWithInputEncoding(
+                    n_input_dims=3, n_output_dims=16,
+                    encoding_config=encoding_config,
+                    network_config=network_config)
+            else:
+                return nn.Sequential(
+                    tcnn.Encoding(3, encoding_config),
+                    tcnn.Network(L * F, 16, network_config))
+        elif arch == 'tiled':
+            print(f'GridEncoding: fixed resolution={VRES} F={F} L={L}')
+            encoding_config={
+                "otype": "TiledGrid",
+                "n_levels": L,
+                "n_features_per_level": F,
+                "log2_hashmap_size": log2_T,
+                "base_resolution": VRES,
+                "per_level_scale": b,
+            }
+            return nn.Sequential(
+                    tcnn.Encoding(3, encoding_config),
+                    tcnn.Network(L * F, 16, network_config))
+        else:
+            raise NotImplementedError
 
     def density(self, x, return_feat=False):
         """
