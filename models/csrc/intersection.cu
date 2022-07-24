@@ -30,7 +30,7 @@ __global__ void ray_aabb_intersect_kernel(
     const int max_hits,
     int* hit_cnt,
     torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> hits_t,
-    torch::PackedTensorAccessor64<long, 2, torch::RestrictPtrTraits> hits_voxel_idx
+    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> hits_voxel_idx
 ){
     const int r = blockIdx.x * blockDim.x + threadIdx.x;
     const int v = blockIdx.y * blockDim.y + threadIdx.y;
@@ -87,7 +87,7 @@ std::vector<torch::Tensor> ray_aabb_intersect_cu(
             max_hits,
             hit_cnt.data_ptr<int>(),
             hits_t.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
-            hits_voxel_idx.packed_accessor64<long, 2, torch::RestrictPtrTraits>()
+            hits_voxel_idx.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>()
         );
     }));
 
@@ -108,15 +108,16 @@ __device__ __forceinline__ float2 _ray_sphere_intersect(
 ){
     const float3 co = ray_o-center;
 
+    const float a = dot(ray_d, ray_d);
     const float half_b = dot(ray_d, co);
     const float c = dot(co, co)-radius*radius;
 
-    const float discriminant = half_b*half_b-c;
+    const float discriminant = half_b*half_b-a*c;
 
     if (discriminant < 0) return make_float2(-1.0f); // no intersection
 
     const float disc_sqrt = sqrtf(discriminant);
-    return make_float2(-half_b-disc_sqrt, -half_b+disc_sqrt);
+    return make_float2(-half_b-disc_sqrt, -half_b+disc_sqrt)/a;
 }
 
 
@@ -128,7 +129,7 @@ __global__ void ray_sphere_intersect_kernel(
     const int max_hits,
     int* hit_cnt,
     torch::PackedTensorAccessor32<float, 3, torch::RestrictPtrTraits> hits_t,
-    torch::PackedTensorAccessor64<long, 2, torch::RestrictPtrTraits> hits_sphere_idx
+    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> hits_sphere_idx
 ){
     const int r = blockIdx.x * blockDim.x + threadIdx.x;
     const int s = blockIdx.y * blockDim.y + threadIdx.y;
@@ -150,6 +151,7 @@ __global__ void ray_sphere_intersect_kernel(
         }
     }
 }
+
 
 std::vector<torch::Tensor> ray_sphere_intersect_cu(
     const torch::Tensor rays_o,
@@ -182,7 +184,7 @@ std::vector<torch::Tensor> ray_sphere_intersect_cu(
             max_hits,
             hit_cnt.data_ptr<int>(),
             hits_t.packed_accessor32<float, 3, torch::RestrictPtrTraits>(),
-            hits_sphere_idx.packed_accessor64<long, 2, torch::RestrictPtrTraits>()
+            hits_sphere_idx.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>()
         );
     }));
 

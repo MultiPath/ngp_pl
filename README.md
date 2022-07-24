@@ -2,11 +2,15 @@
 
 This repo is adapted from https://github.com/kwea123/ngp_pl
 
+### Update 2022 July 24th: Training on custom data is possible now! (warning: some scenes still fail, I am researching the reason)
+
 ### Update 2022 July 14th: Multi-GPU training is available now! With multiple GPUs, now you can achieve high quality under a minute!
 
 Instant-ngp (only NeRF) in pytorch+cuda trained with pytorch-lightning (**high quality with high speed**). This repo aims at providing a concise pytorch interface to facilitate future research, and am grateful if you can share it (and a citation is highly appreciated)!
 
 * [Example Video1](https://user-images.githubusercontent.com/11364490/177025079-cb92a399-2600-4e10-94e0-7cbe09f32a6f.mp4), [Example Video2](https://user-images.githubusercontent.com/11364490/176821462-83078563-28e1-4563-8e7a-5613b505e54a.mp4)
+
+https://user-images.githubusercontent.com/11364490/180640362-9e63da7c-4268-43ce-874a-3219c7bd778c.mp4
 
 *  [Official CUDA implementation](https://github.com/NVlabs/instant-ngp/tree/master)
 *  [torch-ngp](https://github.com/ashawkey/torch-ngp) another pytorch implementation.
@@ -24,17 +28,31 @@ Or you can check the following steps:
     * Install `apex` following their [instruction](https://github.com/NVIDIA/apex#linux)
     * Install core requirements by `pip install -r requirements.txt`
 
-* Cuda extension: Upgrade `pip` to >= 22.1 and run `pip install models/csrc/`
+* Cuda extension: Upgrade `pip` to >= 22.1 and run `pip install models/csrc/` (please run this each time you `pull` the code)
 
 # :books: Data preparation
 
-Download preprocessed datasets from [NSVF](https://github.com/facebookresearch/NSVF#dataset).
+1.  Synthetic data
+
+Download preprocessed datasets from [NSVF](https://github.com/facebookresearch/NSVF#dataset). **Do not change the folder names** since there is some hard-coded fix in my dataloader.
+
+2.  Custom data
+
+Please run `colmap` and get a folder `sparse/0` under which there are `cameras.bin`, `images.bin` and `points3D.bin`. [nerf_llff_data](https://drive.google.com/file/d/16VnMcF1KJYxN9QId6TClMsZRahHNMW5g/view?usp=sharing) [mipnerf360 data](http://storage.googleapis.com/gresearch/refraw360/360_v2.zip) also supported.
 
 # :key: Training
 
-Quickstart: `python train.py --root_dir <path/to/lego> --exp_name Lego`
+Quickstart:
 
-It will train the lego scene for 30k steps (each step with 8192 rays), and perform one testing at the end. The training process should finish within about 5 minutes (saving testing image is slow, add `--no_save_test` to disable). Testing PSNR will be shown at the end.
+1.  Synthetic data
+
+`python train.py --root_dir <path/to/lego> --exp_name Lego`
+
+2.  Custom data
+
+`python train.py --root_dir <path/to/fern> --dataset_name colmap --exp_name fern --scale 2.0 --downsample 0.25`
+
+It will train the scene for 30k steps (each step with 8192 rays), and perform one testing at the end. The training process should finish within about 5 minutes (saving testing image is slow, add `--no_save_test` to disable). Testing PSNR will be shown at the end.
 
 If your GPU has larger memory, you can try increasing `batch_size` (and `lr`) and reducing `num_epochs` (e.g. `--batch_size 16384 --lr 2e-2 --num_epochs 20`). In my experiments, this further reduces the training time by 10~25s while maintaining the same quality.
 
@@ -62,12 +80,15 @@ As for speed, mine is faster than torch-ngp, but is still only half fast as inst
   <img src="https://user-images.githubusercontent.com/11364490/176800109-38eb35f3-e145-4a09-8304-1795e3a4e8cd.png", width="45%">
   <img src="https://user-images.githubusercontent.com/11364490/176800106-fead794f-7e70-4459-b99e-82725fe6777e.png", width="45%">
   <br>
+  <img src="https://user-images.githubusercontent.com/11364490/180444355-444676cf-2af2-49ad-9fe2-16eb1e6c4ef1.png", width="45%">
+  <img src="https://user-images.githubusercontent.com/11364490/180444337-3df9f245-f7eb-453f-902b-0cb9dae60144.png", width="45%">
+  <br>
   <sup>Left: torch-ngp. Right: mine.</sup>
 </p>
 
 More details are in the following section.
 
-# Benchmarks
+# :chart: Benchmarks
 
 To run benchmarks, use the scripts under `benchmarking`.
 
@@ -128,8 +149,12 @@ Followings are my results trained using 1 RTX 2080 Ti (qualitative results [here
 
 </details>
 
+# :worried: Difficulties I meet now, call for help
+
+1.  The sampling quality is still not as good. The original code only needs 5 samples per ray (in average) to render, while mine needs 22
+
+2.  For custom inward 360 data, mine still doesn't train successfully on some scenes. Original code also not always work. Why?
 
 # TODO
 
-- [ ] support custom dataset
 - [ ] GUI
