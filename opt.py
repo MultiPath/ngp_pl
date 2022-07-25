@@ -18,7 +18,7 @@ def get_opts():
     # model args
     parser.add_argument('--scale', type=float, default=0.5,
                         help='scene scale (whole scene must lie in [-scale, scale]^3')
-    parser.add_argument('--encoder_arch', type=str, default='standard', choices=['standard', 'split', 'tiled'])
+    parser.add_argument('--encoder_arch', type=str, default='standard', choices=['standard', 'split', 'tiled', 'volume'])
 
     # training args
     parser.add_argument('--batch_size', type=int, default=8192,

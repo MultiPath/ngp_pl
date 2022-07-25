@@ -82,13 +82,12 @@ class NGP(nn.Module):
                 return nn.Sequential(
                     tcnn.Encoding(3, encoding_config),
                     tcnn.Network(L * F, 16, network_config))
-        elif arch == 'tiled':
+        elif (arch == 'tiled') or (arch == 'volume'):
             print(f'GridEncoding: fixed resolution={VRES} F={F} L={L}')
             encoding_config={
-                "otype": "TiledGrid",
+                "otype": "VolumeGrid" if arch == 'volume' else "TiledGrid",
                 "n_levels": L,
                 "n_features_per_level": F,
-                "log2_hashmap_size": log2_T,
                 "base_resolution": VRES,
                 "per_level_scale": b,
             }
