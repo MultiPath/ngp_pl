@@ -10,7 +10,8 @@ from .rendering import NEAR_DISTANCE
 
 
 class NGP(nn.Module):
-    def __init__(self, scale, encoder_arch='standard'):
+
+    def __init__(self, scale, encoder_arch='standard', rgb_act='Sigmoid'):
         super().__init__()
 
         # scene bounding box
@@ -43,7 +44,7 @@ class NGP(nn.Module):
                 network_config={
                     "otype": "FullyFusedMLP",
                     "activation": "ReLU",
-                    "output_activation": "Sigmoid",
+                    "output_activation": rgb_act,
                     "n_neurons": 64,
                     "n_hidden_layers": 2,
                 }
@@ -123,7 +124,7 @@ class NGP(nn.Module):
             rgbs: (N, 3)
         """
         sigmas, h = self.density(x, return_feat=True)
-        d /= torch.norm(d, dim=-1, keepdim=True)
+        d = d/torch.norm(d, dim=1, keepdim=True)
         d = self.dir_encoder((d+1)/2)
         rgbs = self.rgb_net(torch.cat([d, h], 1))
 
@@ -144,9 +145,10 @@ class NGP(nn.Module):
         return cells
 
     @torch.no_grad()
-    def sample_uniform_and_occupied_cells(self, M):
+    def sample_uniform_and_occupied_cells(self, M, density_threshold):
         """
         Sample both M uniform and occupied cells (per cascade)
+        occupied cells are sample from cells with density > @density_threshold
         
         Outputs:
             cells: list (of length self.cascades) of indices and coords
@@ -159,10 +161,11 @@ class NGP(nn.Module):
                                     device=self.density_grid.device)
             indices1 = vren.morton3D(coords1).long()
             # occupied cells
-            indices2 = torch.nonzero(self.density_grid[c]>0)[:, 0]
-            rand_idx = torch.randint(len(indices2), (M,),
-                                     device=self.density_grid.device)
-            indices2 = indices2[rand_idx]
+            indices2 = torch.nonzero(self.density_grid[c]>density_threshold)[:, 0]
+            if len(indices2)>0:
+                rand_idx = torch.randint(len(indices2), (M,),
+                                         device=self.density_grid.device)
+                indices2 = indices2[rand_idx]
             coords2 = vren.morton3D_invert(indices2.int())
             # concatenate
             cells += [(torch.cat([indices1, indices2]), torch.cat([coords1, coords2]))]
@@ -218,7 +221,8 @@ class NGP(nn.Module):
         if warmup: # during the first steps
             cells = self.get_all_cells()
         else:
-            cells = self.sample_uniform_and_occupied_cells(self.grid_size**3//4)
+            cells = self.sample_uniform_and_occupied_cells(self.grid_size**3//4,
+                                                           density_threshold)
         # infer sigmas
         for c in range(self.cascades):
             indices, coords = cells[c]

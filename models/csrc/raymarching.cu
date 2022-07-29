@@ -175,7 +175,7 @@ __global__ void raymarching_train_kernel(
     const torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> noise,
     const int max_samples,
     int* __restrict__ counter,
-    torch::PackedTensorAccessor32<int, 2, torch::RestrictPtrTraits> rays_a,
+    torch::PackedTensorAccessor64<int64_t, 2, torch::RestrictPtrTraits> rays_a,
     torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> xyzs,
     torch::PackedTensorAccessor32<float, 2, torch::RestrictPtrTraits> dirs,
     torch::PackedTensorAccessor32<float, 1, torch::RestrictPtrTraits> deltas,
@@ -212,9 +212,9 @@ __global__ void raymarching_train_kernel(
         const float mip_bound_inv = 1/mip_bound;
 
         // round down to nearest grid position
-        const int nx = (int)(0.5f*(x*mip_bound_inv+1)*grid_size);
-        const int ny = (int)(0.5f*(y*mip_bound_inv+1)*grid_size);
-        const int nz = (int)(0.5f*(z*mip_bound_inv+1)*grid_size);
+        const int nx = clamp(0.5f*(x*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int ny = clamp(0.5f*(y*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int nz = clamp(0.5f*(z*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
 
         const uint32_t idx = mip*grid_size3 + __morton3D(nx, ny, nz);
         const bool occ = density_bitfield[idx/8] & (1<<(idx%8));
@@ -253,9 +253,9 @@ __global__ void raymarching_train_kernel(
         const float mip_bound_inv = 1/mip_bound;
 
         // round down to nearest grid position
-        const int nx = (int)(0.5f*(x*mip_bound_inv+1)*grid_size);
-        const int ny = (int)(0.5f*(y*mip_bound_inv+1)*grid_size);
-        const int nz = (int)(0.5f*(z*mip_bound_inv+1)*grid_size);
+        const int nx = clamp(0.5f*(x*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int ny = clamp(0.5f*(y*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int nz = clamp(0.5f*(z*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
 
         const uint32_t idx = mip*grid_size3 + __morton3D(nx, ny, nz);
         const bool occ = density_bitfield[idx/8] & (1<<(idx%8));
@@ -298,7 +298,7 @@ std::vector<torch::Tensor> raymarching_train_cu(
     auto counter = torch::zeros({2}, torch::dtype(torch::kInt32).device(rays_o.device()));
     // ray attributes: ray_idx, start_idx, N_samples
     auto rays_a = torch::zeros({N_rays, 3},
-                        torch::dtype(torch::kInt32).device(rays_o.device()));
+                        torch::dtype(torch::kLong).device(rays_o.device()));
     auto xyzs = torch::zeros({N_rays*max_samples, 3}, rays_o.options());
     auto dirs = torch::zeros({N_rays*max_samples, 3}, rays_o.options());
     auto deltas = torch::zeros({N_rays*max_samples}, rays_o.options());
@@ -320,7 +320,7 @@ std::vector<torch::Tensor> raymarching_train_cu(
             noise.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
             max_samples,
             counter.data_ptr<int>(),
-            rays_a.packed_accessor32<int, 2, torch::RestrictPtrTraits>(),
+            rays_a.packed_accessor64<int64_t, 2, torch::RestrictPtrTraits>(),
             xyzs.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
             dirs.packed_accessor32<float, 2, torch::RestrictPtrTraits>(),
             deltas.packed_accessor32<float, 1, torch::RestrictPtrTraits>(),
@@ -375,9 +375,9 @@ __global__ void raymarching_test_kernel(
         const float mip_bound_inv = 1/mip_bound;
 
         // round down to nearest grid position
-        const int nx = (int)(0.5f*(x*mip_bound_inv+1)*grid_size);
-        const int ny = (int)(0.5f*(y*mip_bound_inv+1)*grid_size);
-        const int nz = (int)(0.5f*(z*mip_bound_inv+1)*grid_size);
+        const int nx = clamp(0.5f*(x*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int ny = clamp(0.5f*(y*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
+        const int nz = clamp(0.5f*(z*mip_bound_inv+1)*grid_size, 0.0f, grid_size-1.0f);
 
         const uint32_t idx = mip*grid_size3 + __morton3D(nx, ny, nz);
         const bool occ = density_bitfield[idx/8] & (1<<(idx%8));

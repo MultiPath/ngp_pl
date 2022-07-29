@@ -2,18 +2,30 @@
 
 This repo is adapted from https://github.com/kwea123/ngp_pl
 
-### Update 2022 July 24th: Training on custom data is possible now! (warning: some scenes still fail, I am researching the reason)
+### Update 2022 July 29th: GUI prototype is available now (see following video)!
+
+### Update 2022 July 24th: Training on custom data is possible now!
 
 ### Update 2022 July 14th: Multi-GPU training is available now! With multiple GPUs, now you can achieve high quality under a minute!
 
 Instant-ngp (only NeRF) in pytorch+cuda trained with pytorch-lightning (**high quality with high speed**). This repo aims at providing a concise pytorch interface to facilitate future research, and am grateful if you can share it (and a citation is highly appreciated)!
 
-* [Example Video1](https://user-images.githubusercontent.com/11364490/177025079-cb92a399-2600-4e10-94e0-7cbe09f32a6f.mp4), [Example Video2](https://user-images.githubusercontent.com/11364490/176821462-83078563-28e1-4563-8e7a-5613b505e54a.mp4)
+*  [Official CUDA implementation](https://github.com/NVlabs/instant-ngp/tree/master)
+*  [torch-ngp](https://github.com/ashawkey/torch-ngp) another pytorch implementation that I highly referenced.
+
+# :paintbrush: Gallery
+
+https://user-images.githubusercontent.com/11364490/181671484-d5e154c8-6cea-4d52-94b5-1e5dd92955f2.mp4
+
+https://user-images.githubusercontent.com/11364490/177025079-cb92a399-2600-4e10-94e0-7cbe09f32a6f.mp4
+
+https://user-images.githubusercontent.com/11364490/176821462-83078563-28e1-4563-8e7a-5613b505e54a.mp4
 
 https://user-images.githubusercontent.com/11364490/180640362-9e63da7c-4268-43ce-874a-3219c7bd778c.mp4
 
-*  [Official CUDA implementation](https://github.com/NVlabs/instant-ngp/tree/master)
-*  [torch-ngp](https://github.com/ashawkey/torch-ngp) another pytorch implementation.
+https://user-images.githubusercontent.com/11364490/181415396-7e378d9e-1d74-43c2-82b0-0f86adfb294d.mp4
+
+https://user-images.githubusercontent.com/11364490/181415347-1db46d8d-5276-404b-8f7c-65cb0b040976.mp4
 
 # :computer: Installation
 Run 
@@ -24,6 +36,7 @@ Or you can check the following steps:
 * Python>=3.8 (installation via [anaconda](https://www.anaconda.com/distribution/) is recommended, use `conda create -n ngp_pl python=3.8` to create a conda environment and activate it by `conda activate ngp_pl`)
 * Python libraries
     * Install pytorch by `pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu113`
+    * Install `torch-scatter` following their [instruction](https://github.com/rusty1s/pytorch_scatter#installation)
     * Install `tinycudann` following their [instruction](https://github.com/NVlabs/tiny-cuda-nn#requirements) (compilation and pytorch extension)
     * Install `apex` following their [instruction](https://github.com/NVIDIA/apex#linux)
     * Install core requirements by `pip install -r requirements.txt`
@@ -61,6 +74,8 @@ More options can be found in [opt.py](opt.py).
 # :mag_right: Testing
 
 Use `test.ipynb` to generate images. Lego pretrained model is available [here](https://github.com/kwea123/ngp_pl/releases/tag/v1.0)
+
+GUI usage: run `python show_gui.py` followed by the **same** hyperparameters used in training (`dataset_name`, `root_dir`, etc)
 
 # Comparison with torch-ngp and the paper
 
@@ -123,14 +138,12 @@ Followings are my results trained using 1 RTX 2080 Ti (qualitative results [here
 <details>
   <summary>Tanks and Temples</summary>
 
-|       | Ignatius | Truck | Barn  | Caterpillar | Family | AVG   | 
-|:---:  | :---:    | :---: | :---: | :---:       | :---:  | :---: |
-| *PSNR | 28.22    | 27.57 | 28.00 | 26.16       | 33.94  | 28.78 |
-| **FPS | 10.04    |  7.99 | 16.14 | 10.91       | 6.16   | 10.25 |
+|      | Ignatius | Truck | Barn  | Caterpillar | Family | AVG   | 
+|:---: | :---:    | :---: | :---: | :---:       | :---:  | :---: |
+| PSNR | 28.30    | 27.67 | 28.00 | 26.16       | 34.27  | 28.78 |
+| *FPS | 10.04    |  7.99 | 16.14 | 10.91       | 6.16   | 10.25 |
 
-*Trained with `downsample=0.5` (due to insufficient RAM) and evaluated with `downsample=1.0`
-
-**Evaluated on `test-traj`
+*Evaluated on `test-traj`
 
 </details>
 
@@ -149,12 +162,7 @@ Followings are my results trained using 1 RTX 2080 Ti (qualitative results [here
 
 </details>
 
-# :worried: Difficulties I meet now, call for help
-
-1.  The sampling quality is still not as good. The original code only needs 5 samples per ray (in average) to render, while mine needs 22
-
-2.  For custom inward 360 data, mine still doesn't train successfully on some scenes. Original code also not always work. Why?
-
 # TODO
 
-- [ ] GUI
+- [ ] multi-sphere images as background
+- [ ] train exposure as HDR-NeRF
