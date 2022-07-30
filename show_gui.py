@@ -10,46 +10,45 @@ from datasets import dataset_dict
 from datasets.ray_utils import get_ray_directions, get_rays
 from models.networks import NGP
 from models.rendering import render
+from train import depth2img
 from utils import load_ckpt
 
 import warnings; warnings.filterwarnings("ignore")
 
 
 class OrbitCamera:
-    def __init__(self, K, img_wh, r=5):
+    def __init__(self, K, img_wh, r):
         self.K = K
         self.W, self.H = img_wh
-        self.radius = r  # camera distance from center
-        self.center = np.zeros(3, dtype=np.float32)
-        self.rot = R.from_quat([0, 1, 0, 0])
-        self.up = np.float32([0, 1, 0])
+        self.radius = r
+        self.center = np.zeros(3)
+        self.rot = np.eye(3)
 
     @property
     def pose(self):
         # first move camera to radius
-        res = np.eye(4, dtype=np.float32)
+        res = np.eye(4)
         res[2, 3] -= self.radius
         # rotate
-        rot = np.eye(4, dtype=np.float32)
-        rot[:3, :3] = self.rot.as_matrix()
+        rot = np.eye(4)
+        rot[:3, :3] = self.rot
         res = rot @ res
         # translate
         res[:3, 3] -= self.center
         return res
 
     def orbit(self, dx, dy):
-        # TODO: this requires change....
-        # rotate along camera up/side axis!
-        side = self.rot.as_matrix()[:3, 0]
-        rotvec_x = self.up * np.radians(0.03 * dx)
-        rotvec_y = side * np.radians(-0.03 * dy)
-        self.rot = R.from_rotvec(rotvec_x) * R.from_rotvec(rotvec_y) * self.rot
+        rotvec_x = self.rot[:, 1] * np.radians(0.05 * dx)
+        rotvec_y = self.rot[:, 0] * np.radians(-0.05 * dy)
+        self.rot = R.from_rotvec(rotvec_y).as_matrix() @ \
+                   R.from_rotvec(rotvec_x).as_matrix() @ \
+                   self.rot
 
     def scale(self, delta):
         self.radius *= 1.1 ** (-delta)
 
     def pan(self, dx, dy, dz=0):
-        self.center += 0.0001 * self.rot.as_matrix()[:3, :3] @ np.array([dx, dy, dz])
+        self.center += 1e-4 * self.rot @ np.array([dx, dy, dz])
 
 
 class NGPGUI:
@@ -65,6 +64,7 @@ class NGPGUI:
         # placeholders
         self.dt = 0
         self.mean_samples = 0
+        self.img_mode = 0
 
         self.register_dpg()
 
@@ -73,26 +73,33 @@ class NGPGUI:
         directions = get_ray_directions(cam.H, cam.W, cam.K, device='cuda')
         rays_o, rays_d = \
             get_rays(directions, torch.cuda.FloatTensor(cam.pose))
+
+        # TODO: set these attributes by gui
         if self.hparams.dataset_name in ['colmap', 'nerfpp']:
             exp_step_factor = 1/256
         else: exp_step_factor = 0
 
         results = render(self.model, rays_o, rays_d,
                          **{'test_time': True,
+                            'to_cpu': True, 'to_numpy': True,
                             'T_threshold': 1e-2,
+                            'max_samples': 100,
                             'exp_step_factor': exp_step_factor})
 
-        rgb_pred = rearrange(results["rgb"].cpu().numpy(),
-                             "(h w) c -> h w c", h=self.H)
+        rgb = rearrange(results["rgb"], "(h w) c -> h w c", h=self.H)
+        depth = rearrange(results["depth"], "(h w) -> h w", h=self.H)
         torch.cuda.synchronize()
         self.dt = time.time()-t
         self.mean_samples = results['total_samples']/len(rays_o)
 
-        return rgb_pred
+        if self.img_mode == 0:
+            return rgb
+        elif self.img_mode == 1:
+            return depth2img(depth).astype(np.float32)/255.0
 
     def register_dpg(self):
         dpg.create_context()
-        dpg.create_viewport(title="ngp", width=self.W, height=self.H, resizable=False)
+        dpg.create_viewport(title="ngp_pl", width=self.W, height=self.H, resizable=False)
 
         ## register texture ##
         with dpg.texture_registry(show=False):
@@ -108,9 +115,14 @@ class NGPGUI:
             dpg.add_image("_texture")
         dpg.set_primary_window("_primary_window", True)
 
+        def callback_depth(sender, app_data):
+            self.img_mode = 1-self.img_mode
+
         ## control window ##
         with dpg.window(label="Control", tag="_control_window", width=200, height=150):
             with dpg.collapsing_header(label="Info", default_open=True):
+                dpg.add_button(label="show depth", tag="_button_depth",
+                               callback=callback_depth)
                 dpg.add_separator()
                 dpg.add_text('no data', tag="_log_time")
                 dpg.add_text('no data', tag="_samples_per_ray")
